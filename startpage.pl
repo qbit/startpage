@@ -31,10 +31,16 @@ my $TOKEN = slurp('/run/secrets/nix_review');
 
 my $termQL = q{
     {
-      search(query: "is:pr is:open is:public archived:false repo:nixos/nixpkgs in:title %s", type: ISSUE, first: 5) {
+      search(query: "is:open is:public archived:false repo:nixos/nixpkgs in:title %s", type: ISSUE, first: 10) {
         issueCount
         edges {
           node {
+            ... on Issue {
+             number
+             title
+             url
+             createdAt
+            }
             ... on PullRequest {
               number
               title
