@@ -24,6 +24,7 @@
               MojoSQLite
               IOSocketSSL
               JSON
+              Git
             ];
 
             installPhase = ''
@@ -49,6 +50,7 @@
               MojoSQLite
               IOSocketSSL
               JSON
+              Git
             ];
           };
         });
