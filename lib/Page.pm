@@ -16,7 +16,7 @@ use JSON qw( from_json );
 use Git;
 
 our @ISA       = qw( Exporter );
-our @EXPORT_OK = qw( $page slurp update_feeds update_prs );
+our @EXPORT_OK = qw( $page slurp update_gh_feed update_prs gh_ignore_number );
 
 my $termQL = q{
     {
@@ -25,10 +25,13 @@ my $termQL = q{
         edges {
           node {
             ... on Issue {
-             number
-             title
-             url
-             createdAt
+              number
+              title
+              url
+              repository {
+                nameWithOwner
+              }
+              createdAt
             }
             ... on PullRequest {
               number
@@ -59,16 +62,19 @@ our $page = {
     pullrequests => [
         {
             repo   => "NixOS/nixpkgs",
-            number => 193662,
+            number => 194589,
             info   => {
-                commit   => '42115269e7dfeedebc38be3e45d652de18414bf9',
+                commit   => '',
                 branches => []
             }
         },
         {
             repo   => "NixOS/nixpkgs",
             number => 193186,
-            info   => {}
+            info   => {
+                commit   => 'b2c770b9934842892392f805300c785af517ea95',
+                branches => []
+            }
         },
         {
             repo   => "newrelic/go-agent",
@@ -99,13 +105,15 @@ our $page = {
     ],
 
     terms => {
-        tailscale         => [],
+        calibre           => [],
+        "element-desktop" => [],
         "matrix-synapse"  => [],
         nheko             => [],
         obsidian          => [],
         restic            => [],
-        "element-desktop" => [],
-        "tidal-hifi"      => []
+        tailscale         => [],
+        "tidal-hifi"      => [],
+        openssh           => [],
     }
 };
 
@@ -123,12 +131,35 @@ sub slurp {
     return $d;
 }
 
+sub gh_ignore_number {
+    my ($number, $repo) = @_;
+    # TODO: Pull this from somewhere fancy
+    my $ignores = {
+        "NixOS/nixpkgs" => [
+            172043,
+            160638,
+            85587,
+            73110,
+            35457,
+            142453,
+            120228
+        ]
+    };
+
+    return 0 unless defined $ignores->{$repo};
+    return 1 if ( grep /$number/, @{$ignores->{$repo}} );
+
+    return 0;
+}
+
 sub check_nixpkg_branches {
     my $commit = shift;
+    my $list = [];
+
+    return $list if $commit eq "";
 
     my $branches = $repo->command( 'branch', '-r', '--contains', $commit );
 
-    my $list = [];
     foreach my $b ( split( '\n', $branches ) ) {
         $b =~ s/^\s+origin\///g;
         push( @$list, $b ) if $b =~ m/unstable/;
@@ -151,7 +182,7 @@ sub update_prs {
     $page->{prsUpdated} = time();
 }
 
-sub update_feeds {
+sub update_gh_feed {
     my $ua = shift;
     foreach my $term ( sort keys %{ $page->{terms} } ) {
         my $q  = sprintf( $termQL, $term );
@@ -160,7 +191,13 @@ sub update_feeds {
         my $j = from_json $tx->result->body;
         $page->{terms}->{$term} = [];
         foreach my $node ( @{ $j->{data}->{search}->{edges} } ) {
-            push @{ $page->{terms}->{$term} }, $node->{node};
+            my $repo = $node->{node}->{repository}->{nameWithOwner};
+            say Dumper $repo;
+            if (gh_ignore_number($node->{node}->{number}, $repo)) {
+                say "ignoring $repo / $node->{node}->{number}";
+            } else {
+                push( @{ $page->{terms}->{$term} }, $node->{node} );
+            }
         }
         Mojo::IOLoop->start unless Mojo::IOLoop->is_running;
     }
