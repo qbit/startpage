@@ -10,7 +10,7 @@ use v5.32;
 use Time::HiRes qw( time );
 
 use lib './lib';
-use Page qw( $page slurp update_feeds update_prs );
+use Page qw( $page slurp update_gh_feed update_prs gh_ignore_number );
 
 use Mojolicious::Lite -signatures;
 use Mojo::IOLoop;
@@ -29,7 +29,7 @@ $ua->on(
 
 Mojo::IOLoop->recurring(
     $refresh => sub ($loop) {
-        update_feeds($ua);
+        update_gh_feed($ua);
         update_prs($ua);
     }
 );
@@ -37,7 +37,7 @@ Mojo::IOLoop->recurring(
 Mojo::IOLoop->recurring(
     1 => sub ($loop) {
         my $now = time();
-        update_feeds($ua) if $page->{feedUpdated} - $now > $refresh;
+        update_gh_feed($ua) if $page->{feedUpdated} - $now > $refresh;
         update_prs($ua)   if $page->{prsUpdated} - $now > $refresh;
     }
 );
@@ -56,9 +56,18 @@ get '/main.js' => sub ($c) {
     $c->render( template => 'main', format => 'js' );
 };
 
-get '/update_feeds' => sub ($c) {
+get '/update' => sub ($c) {
     my $start = time();
-    update_feeds($ua);
+    update_gh_feed($ua);
+    update_prs($ua);
+    my $end     = time();
+    my $elapsed = sprintf( "%2f\n", $end - $start );
+    $c->render( text => $elapsed );
+};
+
+get '/update_gh_feed' => sub ($c) {
+    my $start = time();
+    update_gh_feed($ua);
     my $end     = time();
     my $elapsed = sprintf( "%2f\n", $end - $start );
     $c->render( text => $elapsed );
@@ -219,8 +228,9 @@ body {
 }
 
 @@ main.js.ep
-function updatePRs() {
-    const req = new Request('/update_pr_info');
+
+function update(item) {
+    const req = new Request(item);
     fetch(req)
      .then((response) => {
        if (!response.ok) {
@@ -233,17 +243,10 @@ function updatePRs() {
        window.location.reload(false);
      });
 }
-function updateGHFeeds() {
-    const req = new Request('/update_feeds');
-    fetch(req)
-     .then((response) => {
-       if (!response.ok) {
-         throw new Error(`HTTP error! Status: ${response.status}`);
-       }
 
-       return response;
-     })
-     .then((response) => {
-       window.location.reload(false);
-     });
+function updatePRs() {
+    update('/update_pr_info');
+}
+function updateGHFeeds() {
+    update('/update_gh_feed');
 }
