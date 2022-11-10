@@ -139,10 +139,7 @@ sub update_gh_feed {
         $page->{terms}->{$term} = [];
         foreach my $node ( @{ $j->{data}->{search}->{edges} } ) {
             my $repo = $node->{node}->{repository}->{nameWithOwner};
-            if ( gh_ignore_number( $node->{node}->{number}, $repo ) ) {
-                say "ignoring $repo / $node->{node}->{number}";
-            }
-            else {
+            if ( ! gh_ignore_number( $node->{node}->{number}, $repo ) ) {
                 push( @{ $page->{terms}->{$term} }, $node->{node} );
             }
         }
