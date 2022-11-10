@@ -10,7 +10,8 @@ use v5.32;
 use Time::HiRes qw( time );
 
 use lib './lib';
-use Page qw( $page slurp update_gh_feed update_prs gh_ignore_number );
+use Page
+  qw( $page slurp update_gh_feed update_prs gh_ignore_number cache_logos );
 
 use Mojolicious::Lite -signatures;
 use Mojo::IOLoop;
@@ -27,6 +28,8 @@ $ua->on(
     }
 );
 
+cache_logos($ua);
+
 Mojo::IOLoop->recurring(
     $refresh => sub ($loop) {
         update_gh_feed($ua);
@@ -38,7 +41,7 @@ Mojo::IOLoop->recurring(
     1 => sub ($loop) {
         my $now = time();
         update_gh_feed($ua) if $page->{feedUpdated} - $now > $refresh;
-        update_prs($ua)   if $page->{prsUpdated} - $now > $refresh;
+        update_prs($ua)     if $page->{prsUpdated} - $now > $refresh;
     }
 );
 
@@ -87,6 +90,8 @@ __DATA__
 @@ index.html.ep
 % layout 'default';
 <h3><%= $page->{date} %>
+<br />
+<span onclick="update('/update'); return false">↻</span>
 <hr />
 <div class="list">
   <div class="list_head">
@@ -105,7 +110,7 @@ __DATA__
       <ul>
       % foreach my $entry (sort { $b->{createdAt} cmp $a->{createdAt} } @{$page->{terms}->{$term}}) {
           <li>
-            <a target="_blank" href="<%= $entry->{url} %>"><%= $entry->{title} %></a>
+            <%= $entry->{number} %> : <a target="_blank" href="<%= $entry->{url} %>"><%= $entry->{title} %></a>
           </li>
       % }
       </ul>
@@ -127,8 +132,9 @@ __DATA__
   <ul>
   % foreach my $pr (sort sort { $b->{repo} cmp $a->{repo} } @{$page->{pullrequests}}) {
     <li>
+      <%= $pr->{repo} . " : " . $pr->{info}->{description} || "" %> : 
       <a target="_blank" href="https://github.com/<%= $pr->{repo} %>/pull/<%= $pr->{number} %>">
-        <%= $pr->{repo} %>: <%= $pr->{number} %>
+        <%= $pr->{number} %>
       </a>
       % if ($pr->{repo} eq "NixOS/nixpkgs" or scalar keys %{ $pr->{info} } > 0) {
         <ul>
@@ -157,9 +163,14 @@ __DATA__
     </div>
   </div>
   <hr />
-  <ul>
+  <ul class="icons">
   % foreach my $link (sort { $a->{name} cmp $b->{name} } @{$page->{links}}) {
-    <li><a target="_blank" href="<%= $link->{url} %>"><%= $link->{name} %></a></li>
+    <a href="<%= $link->{url} %>">
+      <li>
+        <img src="data:<%= $link->{logo_content_type} %>;base64,<%= $link->{cached_logo} %>" /><br />
+        <%= $link->{name} %>
+      </li>
+    </a>
   % }
   </ul>
 </div>
@@ -225,6 +236,23 @@ body {
 
 .list p {
     padding-left: 10px;
+}
+
+.icons li {
+    float: left;
+    padding: 10px;
+    margin: 10px;
+    width: 130px;
+    height: 130px;
+    border-radius: 10px;
+    border: 1px solid black;
+    list-style-type: none;
+    text-align: center;
+}
+
+.icons li img {
+    width: 50px;
+    hight: 50px;
 }
 
 @@ main.js.ep
