@@ -47,6 +47,10 @@ my $termQL = q{
           }
         }
       }
+      rateLimit {
+        remaining
+        resetAt
+      }
     }
 };
 
@@ -55,9 +59,10 @@ open my $fh, '<', "$ENV{HOME}/.startpage" or die "Can't open file $!";
 my $page_data = do { local $/; <$fh> };
 close $fh;
 
-$page                = from_json $page_data;
-$page->{prsUpdated}  = time();
-$page->{feedUpdated} = time();
+$page                  = from_json $page_data;
+$page->{prsUpdated}    = time();
+$page->{feedUpdated}   = time();
+$page->{rateLimit}     = {};
 
 $ENV{"GIT_CONFIG_SYSTEM"} = "";        # Ignore insteadOf rules
 $ENV{"HOME"}              = "/tmp";    # Ignore ~/.netrc
@@ -143,6 +148,7 @@ sub update_gh_feed {
                 push( @{ $page->{terms}->{$term} }, $node->{node} );
             }
         }
+        $page->{rateLimit} = $j->{data}->{rateLimit} if defined $j->{data}->{rateLimit}->{remaining};
         Mojo::IOLoop->start unless Mojo::IOLoop->is_running;
     }
     $page->{feedUpdated} = time();

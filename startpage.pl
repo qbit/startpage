@@ -91,7 +91,8 @@ __DATA__
 % layout 'default';
 <h3><%= $page->{date} %>
 <br />
-<span onclick="update('/update'); return false">↻</span>
+<span onclick="update('/update'); return false">↻</span><br />
+Queries left: <%= $page->{rateLimit}->{remaining} %>
 <hr />
 <div class="list">
   <div class="list_head">
@@ -101,7 +102,9 @@ __DATA__
     </div>
   </div>
   <hr />
-  <p><i>Updated <%= sprintf( "%.1f\n", (time() - $page->{feedUpdated}) / 60 ) %> minutes ago.</i></p>
+  <p>
+    <i>Updated <%= sprintf( "%.1f\n", (time() - $page->{feedUpdated}) / 60 ) %> minutes ago.</i>
+  </p>
   <ul>
   % foreach my $term (sort keys %{$page->{terms}}) {
     % if (scalar(@{$page->{terms}->{$term}}) > 0) {
