@@ -13,9 +13,9 @@
       packages = forAllSystems (system:
         let pkgs = nixpkgsFor.${system};
         in {
-          startpage = pkgs.stdenv.mkDerivation {
+          startpage = pkgs.perlPackages.buildPerlPackage {
             pname = "startpage";
-            version = "v0.0.0";
+            version = "v0.0.1";
             src = ./.;
             buildInputs = with pkgs.perlPackages; [ PerlTidy perl ];
             nativeBuildInputs = with pkgs.perlPackages; [
@@ -27,9 +27,11 @@
               Git
             ];
 
+            outputs = [ "out" "dev" ];
+
             installPhase = ''
               mkdir -p $out/bin
-              install -t $out/bin startpage.pl
+              install startpage.pl $out/bin/startpage
             '';
           };
         });

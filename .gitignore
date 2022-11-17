@@ -1,2 +1,5 @@
 .direnv
 *.bak
+MYMETA.*
+result
+Makefile

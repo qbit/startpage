@@ -3,6 +3,8 @@
 # vim: set ts=4 sw=4 tw=0:
 # vim: set expandtab:
 
+my $VERSION = 'v0.0.1';
+
 use strict;
 use warnings;
 use v5.32;
