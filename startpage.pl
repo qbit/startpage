@@ -8,29 +8,28 @@ my $VERSION = 'v0.0.1';
 use strict;
 use warnings;
 use v5.32;
+use Data::Dumper;
 
 use Time::HiRes qw( time );
 
 use lib './lib';
 use Page
-  qw( $page slurp update_gh_feed update_prs gh_ignore_number cache_logos );
+  qw( $page slurp update_gh_feed update_prs gh_ignore_number cache_logos $sql $ua );
 
 use Mojolicious::Lite -signatures;
 use Mojo::IOLoop;
 use Mojo::URL;
-use Mojo::UserAgent;
+
+my $db = $sql->db;
 
 my $TOKEN   = slurp('/run/secrets/nix_review');
 my $refresh = 15 * 60;
 
-my $ua = Mojo::UserAgent->new;
 $ua->on(
     start => sub ( $ua, $tx ) {
         $tx->req->headers->header( "Authorization" => "Bearer ${TOKEN}" );
     }
 );
-
-cache_logos($ua);
 
 Mojo::IOLoop->recurring(
     $refresh => sub ($loop) {
@@ -86,6 +85,70 @@ get '/update_pr_info' => sub ($c) {
     $c->render( text => $elapsed );
 };
 
+put '/add_link' => sub ($c) {
+    my $data = $c->req->json;
+    my $result =
+      $db->query( 'insert into links (name, url, logo) values (?, ?, ?)',
+        $data->{name}, $data->{url}, $data->{logo} );
+
+    $page->{links} = $db->select('links')->hashes;
+
+    cache_logos($ua);
+
+    $c->render( json => $result );
+};
+
+put '/rm_track' => sub ($c) {
+    my $data = $c->req->json;
+    my $result =
+      $db->query('delete from pull_requests where id = ?', $data->{id});
+
+    $page->{pullrequests} = $db->select('pull_requests')->hashes;
+    for my $pr ( @{ $page->{pullrequests} } ) {
+        $pr->{branches} = [];
+    }
+
+    $c->render( json => $result );
+};
+
+put '/add_track' => sub ($c) {
+    my $data = $c->req->json;
+    my $result =
+      $db->query(
+'insert into pull_requests (number, repo, description) values (?, ?, ?)',
+        $data->{number}, $data->{repo}, $data->{description} );
+
+    # TODO: make a function
+    $page->{pullrequests} = $db->select('pull_requests')->hashes;
+    for my $pr ( @{ $page->{pullrequests} } ) {
+        $pr->{branches} = [];
+    }
+
+    $c->render( json => $result );
+};
+
+put '/add_ignore' => sub ($c) {
+    my $data = $c->req->json;
+    my $result =
+      $db->query( 'insert into pr_ignores (pr, repo) values (?, ?)',
+        $data->{number}, $data->{repo} );
+
+    $page->{links} = $db->select('links')->hashes;
+
+    # TODO: make a function
+    my $ignores = $db->query('select * from pr_ignores');
+    while ( my $next = $ignores->hash ) {
+        my $repo = $next->{repo};
+        my $pr   = $next->{pr};
+        $page->{ignores}->{$repo} = [] unless defined $page->{ignores}->{$repo};
+        push @{ $page->{ignores}->{$repo} }, $pr;
+    }
+
+    # TODO: remove updated ignores from pullrequests
+
+    $c->render( json => $result );
+};
+
 app->start;
 
 __DATA__
@@ -115,6 +178,8 @@ Queries left: <%= $page->{rateLimit}->{remaining} %>
       <ul>
       % foreach my $entry (sort { $b->{createdAt} cmp $a->{createdAt} } @{$page->{terms}->{$term}}) {
           <li>
+            <span onclick="trackNixOS('<%= $entry->{number} %>', '<%= $entry->{title} %>'); return false;">+</span>
+            <span onclick="ignorePR('<%= $entry->{number} %>', 'NixOS/nixpkgs')">-</span>
             <%= $entry->{number} %> : <a target="_blank" href="<%= $entry->{url} %>"><%= $entry->{title} %></a>
           </li>
       % }
@@ -128,7 +193,18 @@ Queries left: <%= $page->{rateLimit}->{remaining} %>
   <div class="list_head">
     <span>Pull Request Tracker</span>
     <div class="list_head_right">
-        <span>+</span>
+        <span id="addTrack">+</span>
+        <dialog id="trackDialog">
+          <form id="trackForm" method="dialog">
+            <label>PR number <input type="text" name="number" /></label><br />
+            <label>Repo <input type="text" name="repo" /></label><br />
+            <label>Description <input type="text" name="description" /></label><br />
+            <div>
+              <button id="cancelTrack" value="cancel">Cancel</button>
+              <button id="submitTrack">Add</button>
+            </div>
+          </form>
+        </dialog>
         <span onclick="updatePRs(); return false">↻</span>
     </div>
   </div>
@@ -137,22 +213,20 @@ Queries left: <%= $page->{rateLimit}->{remaining} %>
   <ul>
   % foreach my $pr (sort sort { $b->{repo} cmp $a->{repo} } @{$page->{pullrequests}}) {
     <li>
-      <%= $pr->{repo} . " : " . $pr->{info}->{description} || "" %> : 
+      <span onclick="editTracked('<%= $pr->{number} %>'); return false;">✎</span>
+      <span onclick="rmFromTracker('<%= $pr->{id} %>')">X</span>
+      <%= $pr->{repo} . " : " . $pr->{description} || "" %> : 
       <a target="_blank" href="https://github.com/<%= $pr->{repo} %>/pull/<%= $pr->{number} %>">
         <%= $pr->{number} %>
       </a>
-      % if ($pr->{repo} eq "NixOS/nixpkgs" or scalar keys %{ $pr->{info} } > 0) {
+      % if ($pr->{repo} eq "NixOS/nixpkgs" or scalar keys %{ $pr } > 0) {
         <ul>
         % if ($pr->{repo} eq "NixOS/nixpkgs") {
-          % if ( scalar keys %{ $pr->{info} } > 0) {
-            % foreach my $k (keys %{ $pr->{info} }) {
-              % if ( $k eq "commit" ) {
-                % foreach my $b (sort @{ $pr->{info}->{branches} } ) {
+              % if ( $pr->{commitid} ) {
+                % foreach my $b (sort @{ $pr->{branches} } ) {
                   <li><%= $b %></li>
                 % }
               % }
-            % }
-          % }
         % }
         </ul>
       % }
@@ -164,7 +238,18 @@ Queries left: <%= $page->{rateLimit}->{remaining} %>
   <div class="list_head">
     <span>Links</span>
     <div class="list_head_right">
-        <span>+</span>
+        <span id="addLink">+</span>
+        <dialog id="linkDialog">
+          <form id="linkForm" method="dialog">
+            <label>Name: <input type="text" name="name" /></label><br />
+            <label>URL: <input type="text" name="url" /></label><br />
+            <label>Logo: <input type="text" name="logo" /></label><br />
+            <div>
+              <button id="cancelLink" value="cancel">Cancel</button>
+              <button id="submitLink">Add</button>
+            </div>
+          </form>
+        </dialog>
     </div>
   </div>
   <hr />
@@ -235,6 +320,10 @@ body {
     padding-right: 10px;
 }
 
+ul span {
+    cursor: pointer;
+}
+
 .list_head_right {
     cursor: pointer;
 }
@@ -283,3 +372,72 @@ function updatePRs() {
 function updateGHFeeds() {
     update('/update_gh_feed');
 }
+
+function makeSubmitter(add, dialog, submit, form, url) {
+    const addLink = document.getElementById(add);
+    const linkDialog = document.getElementById(dialog);
+    const submitLink = document.getElementById(submit);
+    const linkForm = document.getElementById(form);
+
+    addLink.addEventListener('click', () => {
+        linkDialog.showModal();
+    });
+    submitLink.addEventListener('click', () => {
+        const data = Object.fromEntries(new FormData(linkForm).entries());
+        fetch(url, {
+                method: 'PUT',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
+        });
+    });
+}
+
+function trackNixOS(number, description) {
+    const data = {
+        number: number,
+        repo: "NixOS/nixpkgs",
+        description: description
+    };
+    fetch('/add_track', {
+            method: 'PUT',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data),
+    });
+}
+
+function ignorePR(number, repo) {
+    const data = {
+        number: number,
+        repo: repo,
+    };
+    fetch('/add_ignore', {
+            method: 'PUT',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data),
+    });
+}
+function rmFromTracker(pr_id) {
+    const data = {
+        id: pr_id,
+    };
+    fetch('/rm_track', {
+            method: 'PUT',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data),
+    });
+}
+
+makeSubmitter('addLink', 'linkDialog', 'submitLink', 'linkForm', '/add_link');
+makeSubmitter('addTrack', 'trackDialog', 'submitTrack', 'trackForm', '/add_track');

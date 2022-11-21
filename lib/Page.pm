@@ -16,9 +16,42 @@ use JSON qw( from_json );
 use MIME::Base64 qw( encode_base64 );
 use Git;
 
+use Mojo::SQLite;
+use Mojo::UserAgent;
+
+our $sql = Mojo::SQLite->new('sqlite:startpage.db');
+our $ua  = Mojo::UserAgent->new;
+$sql->migrations->name('startpage_init')->from_string(<<EOF)->migrate;
+-- 1 up
+create table watch_items (id integer primary key autoincrement, name text not null unique, descr text);
+create table pr_ignores (id integer primary key autoincrement, pr integer not null, repo text not null, unique(pr, repo)); 
+create table links (id integer primary key autoincrement, url text not null unique, name text not null, logo text);
+create table pull_requests (
+    id integer primary key autoincrement,
+    number integer not null unique,
+    repo text not null,
+    description text, commitid text);
+-- 1 down
+drop table watch_items;
+drop table pr_ignores;
+drop table links;
+drop table pull_requests;
+EOF
+
+$sql->migrations->name('icon_cache')->from_string(<<EOF)->migrate;
+-- 2 up
+create table icons (id integer primary key autoincrement, url text not null unique, content_type text not null, data blob not null);
+-- 1 down
+drop table icons;
+EOF
+
+my $db = $sql->db;
+
+$sql->migrations->migrate;
+
 our @ISA = qw( Exporter );
 our @EXPORT_OK =
-  qw( $page slurp update_gh_feed update_prs gh_ignore_number cache_logos );
+  qw( $page slurp update_gh_feed update_prs gh_ignore_number cache_logos $sql $ua );
 
 my $termQL = q{
     {
@@ -54,21 +87,45 @@ my $termQL = q{
     }
 };
 
-our $page = {};
-open my $fh, '<', "$ENV{HOME}/.startpage" or die "Can't open file $!";
-my $page_data = do { local $/; <$fh> };
-close $fh;
+our $page = {
+    descr        => "a page to start with",
+    title        => "startpage",
+    links        => [],
+    ignores      => {},
+    pullrequests => []
+};
 
-$page                  = from_json $page_data;
-$page->{prsUpdated}    = time();
-$page->{feedUpdated}   = time();
-$page->{rateLimit}     = {};
+$page->{links} = $db->select('links')->hashes;
+cache_logos($ua);
+$page->{pullrequests} = $db->select('pull_requests')->hashes;
 
+my $terms = $db->query('select * from watch_items');
+while ( my $next = $terms->hash ) {
+    $page->{terms}->{ $next->{name} } = [];
+}
+
+my $ignores = $db->query('select * from pr_ignores');
+while ( my $next = $ignores->hash ) {
+    my $repo = $next->{repo};
+    my $pr   = $next->{pr};
+    $page->{ignores}->{$repo} = [] unless defined $page->{ignores}->{$repo};
+    push @{ $page->{ignores}->{$repo} }, $pr;
+}
+
+for my $pr ( @{ $page->{pullrequests} } ) {
+    $pr->{branches} = [];
+}
+
+$page->{prsUpdated}  = time();
+$page->{feedUpdated} = time();
+$page->{rateLimit}   = {};
+
+my $repo_dir = "/home/qbit/startpage_nixpkgs";
 $ENV{"GIT_CONFIG_SYSTEM"} = "";        # Ignore insteadOf rules
 $ENV{"HOME"}              = "/tmp";    # Ignore ~/.netrc
-Git::command( 'clone', 'https://github.com/nixos/nixpkgs', '/tmp/nixpkgs' )
-  if !-e '/tmp/nixpkgs';
-my $repo = Git->repository( Directory => '/tmp/nixpkgs' );
+Git::command( 'clone', 'https://github.com/nixos/nixpkgs', $repo_dir )
+  if !-e $repo_dir;
+my $repo = Git->repository( Directory => $repo_dir );
 
 sub slurp {
     my $f = shift;
@@ -111,21 +168,25 @@ sub check_nixpkg_branches {
 
 sub update_prs {
     my $ua = shift;
+    print "Updating prs...  ";
 
     $repo->command('fetch');
 
     foreach my $pr ( sort @{ $page->{pullrequests} } ) {
-        if ( defined $pr->{info}->{commit} ) {
-            $pr->{info}->{branches} =
-              check_nixpkg_branches( $pr->{info}->{commit} );
+        if ( defined $pr->{commitid} ) {
+            $pr->{branches} =
+              check_nixpkg_branches( $pr->{commitid} );
         }
     }
     $page->{prsUpdated} = time();
+    say "Done";
 }
 
 sub cache_logos {
     my $ua = shift;
     foreach my $link ( sort @{ $page->{links} } ) {
+        # TODO: cache loaded info into icons table
+        say "fetching icon for $link->{name}";
         my $tx = $ua->get( $link->{logo} );
         $link->{cached_logo}       = encode_base64( $tx->result->body );
         $link->{logo_content_type} = "image/png";
@@ -136,6 +197,7 @@ sub cache_logos {
 
 sub update_gh_feed {
     my $ua = shift;
+    print "Updating GitHub feed...   ";
     foreach my $term ( sort keys %{ $page->{terms} } ) {
         my $q  = sprintf( $termQL, $term );
         my $tx = $ua->post(
@@ -144,14 +206,16 @@ sub update_gh_feed {
         $page->{terms}->{$term} = [];
         foreach my $node ( @{ $j->{data}->{search}->{edges} } ) {
             my $repo = $node->{node}->{repository}->{nameWithOwner};
-            if ( ! gh_ignore_number( $node->{node}->{number}, $repo ) ) {
+            if ( !gh_ignore_number( $node->{node}->{number}, $repo ) ) {
                 push( @{ $page->{terms}->{$term} }, $node->{node} );
             }
         }
-        $page->{rateLimit} = $j->{data}->{rateLimit} if defined $j->{data}->{rateLimit}->{remaining};
+        $page->{rateLimit} = $j->{data}->{rateLimit}
+          if defined $j->{data}->{rateLimit}->{remaining};
         Mojo::IOLoop->start unless Mojo::IOLoop->is_running;
     }
     $page->{feedUpdated} = time();
+    say "Done";
 }
 
 1;
