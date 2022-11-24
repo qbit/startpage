@@ -22,9 +22,7 @@
             pname = "startpage";
             version = "v0.0.1";
             src = ./.;
-            buildInputs = with pkgs.perlPackages; [ PerlTidy perl ];
-            nativeBuildInputs = with pkgs.perlPackages; [
-              perl
+            buildInputs = with pkgs.perlPackages; [
               Mojolicious
               MojoSQLite
               IOSocketSSL
