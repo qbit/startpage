@@ -63,7 +63,7 @@ in {
         ExecStart =
           "${pkgs.perlPackages.Mojolicious}/bin/morbo -m production -l http://127.0.0.1:${
             toString cfg.port
-          } ${pkgs.startpage}/bin/startpage";
+          } ${pkgs.startpage}/bin/startpage.pl";
       };
     };
   };
