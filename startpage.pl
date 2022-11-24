@@ -13,6 +13,7 @@ my $VERSION = 'v0.0.1';
 use Time::HiRes qw( time );
 
 use lib './lib';
+use lib '../lib';
 use Page
   qw( $page slurp update_gh_feed update_prs gh_ignore_number cache_logos $sql $ua );
 
