@@ -33,11 +33,6 @@
             ];
 
             outputs = [ "out" "dev" ];
-
-            installPhase = ''
-              mkdir -p $out/bin
-              install startpage.pl $out/bin/startpage
-            '';
           };
         });
 
