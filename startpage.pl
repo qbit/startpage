@@ -13,8 +13,8 @@ my $VERSION = 'v0.0.1';
 use Time::HiRes qw( time );
 
 use FindBin qw($Bin);
-use lib "$Bin/../lib";
 use lib "$Bin/lib";
+use lib "$Bin/../lib/perl5/site_perl/";
 
 use Page
   qw( $page slurp update_gh_feed update_prs gh_ignore_number cache_logos $sql $ua );
