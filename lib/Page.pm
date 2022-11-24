@@ -5,7 +5,6 @@ package Page;
 
 use 5.10.0;
 use feature 'signatures';
-use feature 'say';
 use strict;
 use warnings;
 use Data::Dumper;
@@ -179,7 +178,6 @@ sub update_prs {
         }
     }
     $page->{prsUpdated} = time();
-    say "Done";
 }
 
 sub cache_logos {
@@ -187,7 +185,6 @@ sub cache_logos {
     foreach my $link ( sort @{ $page->{links} } ) {
 
         # TODO: cache loaded info into icons table
-        say "fetching icon for $link->{name}";
         my $tx = $ua->get( $link->{logo} );
         $link->{cached_logo}       = encode_base64( $tx->result->body );
         $link->{logo_content_type} = "image/png";
@@ -216,7 +213,6 @@ sub update_gh_feed {
         Mojo::IOLoop->start unless Mojo::IOLoop->is_running;
     }
     $page->{feedUpdated} = time();
-    say "Done";
 }
 
 1;

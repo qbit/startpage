@@ -3,12 +3,12 @@
 # vim: set ts=4 sw=4 tw=0:
 # vim: set expandtab:
 
-my $VERSION = 'v0.0.1';
-
 use strict;
 use warnings;
 use v5.32;
 use Data::Dumper;
+
+my $VERSION = 'v0.0.1';
 
 use Time::HiRes qw( time );
 
@@ -40,7 +40,7 @@ Mojo::IOLoop->recurring(
 
 Mojo::IOLoop->recurring(
     1 => sub ($loop) {
-        my $now = time();
+        my $now = time;
         update_gh_feed($ua) if $page->{feedUpdated} - $now > $refresh;
         update_prs($ua)     if $page->{prsUpdated} - $now > $refresh;
     }
@@ -61,26 +61,26 @@ get '/main.js' => sub ($c) {
 };
 
 get '/update' => sub ($c) {
-    my $start = time();
+    my $start = time;
     update_gh_feed($ua);
     update_prs($ua);
-    my $end     = time();
+    my $end     = time;
     my $elapsed = sprintf( "%2f\n", $end - $start );
     $c->render( text => $elapsed );
 };
 
 get '/update_gh_feed' => sub ($c) {
-    my $start = time();
+    my $start = time;
     update_gh_feed($ua);
-    my $end     = time();
+    my $end     = time;
     my $elapsed = sprintf( "%2f\n", $end - $start );
     $c->render( text => $elapsed );
 };
 
 get '/update_pr_info' => sub ($c) {
-    my $start = time();
+    my $start = time;
     update_prs($ua);
-    my $end     = time();
+    my $end     = time;
     my $elapsed = sprintf( "%2f\n", $end - $start );
     $c->render( text => $elapsed );
 };
@@ -167,7 +167,7 @@ Queries left: <%= $page->{rateLimit}->{remaining} %>
   </div>
   <hr />
   <p>
-    <i>Updated <%= sprintf( "%.1f\n", (time() - $page->{feedUpdated}) / 60 ) %> minutes ago.</i>
+    <i>Updated <%= sprintf( "%.1f\n", (time - $page->{feedUpdated}) / 60 ) %> minutes ago.</i>
   </p>
   <ul>
   % foreach my $term (sort keys %{$page->{terms}}) {
@@ -208,7 +208,7 @@ Queries left: <%= $page->{rateLimit}->{remaining} %>
     </div>
   </div>
   <hr />
-  <p><i>Updated <%= sprintf( "%.1f\n", (time() - $page->{prsUpdated}) / 60 ) %> minutes ago.</i></p>
+  <p><i>Updated <%= sprintf( "%.1f\n", (time - $page->{prsUpdated}) / 60 ) %> minutes ago.</i></p>
   <ul>
   % foreach my $pr (sort sort { $b->{repo} cmp $a->{repo} } @{$page->{pullrequests}}) {
     <li>
