@@ -101,7 +101,7 @@ put '/add_link' => sub ($c) {
 put '/rm_track' => sub ($c) {
     my $data = $c->req->json;
     my $result =
-      $db->query('delete from pull_requests where id = ?', $data->{id});
+      $db->query( 'delete from pull_requests where id = ?', $data->{id} );
 
     $page->{pullrequests} = $db->select('pull_requests')->hashes;
     for my $pr ( @{ $page->{pullrequests} } ) {
@@ -128,9 +128,8 @@ put '/add_track' => sub ($c) {
 };
 
 put '/add_ignore' => sub ($c) {
-    my $data = $c->req->json;
-    my $result =
-      $db->query( 'insert into pr_ignores (pr, repo) values (?, ?)',
+    my $data   = $c->req->json;
+    my $result = $db->query( 'insert into pr_ignores (pr, repo) values (?, ?)',
         $data->{number}, $data->{repo} );
 
     $page->{links} = $db->select('links')->hashes;

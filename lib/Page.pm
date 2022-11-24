@@ -185,6 +185,7 @@ sub update_prs {
 sub cache_logos {
     my $ua = shift;
     foreach my $link ( sort @{ $page->{links} } ) {
+
         # TODO: cache loaded info into icons table
         say "fetching icon for $link->{name}";
         my $tx = $ua->get( $link->{logo} );
