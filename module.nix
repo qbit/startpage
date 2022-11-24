@@ -61,7 +61,7 @@ in {
         Group = cfg.group;
 
         ExecStart =
-          "${cfg.startpage}/bin/startpage.pl -m production -l http://127.0.0.1:${
+          "${cfg.package}/bin/startpage.pl daemon -m production -l http://127.0.0.1:${
             toString cfg.port
           }";
       };
