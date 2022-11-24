@@ -61,9 +61,9 @@ in {
         Group = cfg.group;
 
         ExecStart =
-          "${pkgs.perlPackages.Mojolicious}/bin/morbo -m production -l http://127.0.0.1:${
+          "${cfg.startpage}/bin/startpage.pl -m production -l http://127.0.0.1:${
             toString cfg.port
-          } ${pkgs.startpage}/bin/startpage.pl";
+          }";
       };
     };
   };
