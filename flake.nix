@@ -1,7 +1,8 @@
 {
-  description = "startpage: a tool for displaying initial content in a browser start page.";
+  description =
+    "startpage: a tool for displaying initial content in a browser start page.";
 
-  inputs.nixpkgs.url = "nixpkgs/nixos-22.05";
+  inputs.nixpkgs.url = "nixpkgs/nixos-22.11";
 
   outputs = { self, nixpkgs }:
     let
@@ -10,6 +11,10 @@
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
       nixpkgsFor = forAllSystems (system: import nixpkgs { inherit system; });
     in {
+      overlay = final: prev: {
+        startpage = self.packages.${prev.system}.startpage;
+      };
+      nixosModule = import ./module.nix;
       packages = forAllSystems (system:
         let pkgs = nixpkgsFor.${system};
         in {
@@ -36,7 +41,8 @@
           };
         });
 
-      defaultPackage = forAllSystems (system: self.packages.${system}.startpage);
+      defaultPackage =
+        forAllSystems (system: self.packages.${system}.startpage);
       devShells = forAllSystems (system:
         let pkgs = nixpkgsFor.${system};
         in {
@@ -45,7 +51,11 @@
               PS1='\u@\h:\@; '
               echo "Perl `${pkgs.perl}/bin/perl --version`"
             '';
-            buildInputs = with pkgs.perlPackages; [ PerlTidy pkgs.sqlite PerlCritic ];
+            buildInputs = with pkgs.perlPackages; [
+              PerlTidy
+              pkgs.sqlite
+              PerlCritic
+            ];
             nativeBuildInputs = with pkgs.perlPackages; [
               perl
               Mojolicious
